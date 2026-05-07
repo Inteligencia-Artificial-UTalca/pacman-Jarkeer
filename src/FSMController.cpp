@@ -6,6 +6,7 @@
  */
 
 #include "FSMController.h"
+#include "Ghost.h"
 #include <iostream>
 
 FSMController::FSMController(std::shared_ptr<Character> character):
@@ -43,6 +44,45 @@ std::shared_ptr<FSMState> PillTransition::getNextState(){
 }
 
 
+// FrightenedTransition, detecta cuando el fantasma se vuelve comestible
+FrightenedTransition::FrightenedTransition(std::shared_ptr<FSMState> next)
+    : _next(next), lastEdible(false) {}
+ 
+bool FrightenedTransition::isValid(const GameState& gs){
+    bool nowEdible = gs.isGhostEdible(0);
+    if(!lastEdible && nowEdible){
+        lastEdible = nowEdible;
+        return true;
+    }
+    lastEdible = nowEdible;
+    return false;
+}
+std::shared_ptr<FSMState> FrightenedTransition::getNextState(){ return _next; }
+
+// RecoveryTransition, detecta cuando el fantasma deja de ser comestible
+RecoveryTransition::RecoveryTransition(std::shared_ptr<FSMState> next)
+	: _next(next) {}
+
+bool RecoveryTransition::isValid(const GameState& gs){
+	return !gs.isGhostEdible(0);
+}
+
+std::shared_ptr<FSMState> RecoveryTransition::getNextState(){ return _next; }
+
+// TimerTransition,  Dispara después de N segundos usando chrono
+TimerTransition::TimerTransition(std::shared_ptr<FSMState> next, double seconds)
+	: _next(next), _seconds(seconds), _running(false) {}
+	void TimerTransition::Reset() {
+		time_point_start = std::chrono::steady_clock::now();
+		_running = true;
+	}
+bool TimerTransition::isValid(const GameState&){
+    if(!_running) return false;
+    auto now  = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = now - time_point_start;
+    return diff.count() >= _seconds;
+}
+std::shared_ptr<FSMState> TimerTransition::getNextState(){ return _next; }
 
 ///////////////////////////////ChaseState///////////////////////////////////////
 ChaseState::ChaseState(std::shared_ptr<Character> _character):FSMState(_character){
@@ -63,8 +103,7 @@ Move ChaseState::onUpdate(const GameState& game){
 		moves=game.getMaze().getGhostLegalMoves(myPos,character->getDirection());
 	}
 
-	float min=euclid2(
-		game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos,moves[0])),
+	float min=euclid2(game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos,moves[0])),
 			pacmanCoord);
 	int minI=0;
 	for(unsigned int i=1;i<moves.size();i++){
@@ -82,13 +121,118 @@ ChaseState::~ChaseState(){
 
 }
 
+// ScatterState. Blinky huye a la esquina superior derecha
+ScatterState::ScatterState(std::shared_ptr<Character> _character):FSMState(_character), corner({25, 0}){
+	
+}
+
+void ScatterState::onEnter(const GameState&){
+    std::dynamic_pointer_cast<Ghost>(character)->revert();
+}
+
+Move ScatterState::onUpdate(const GameState& game){
+	// Moverse hacia la esquina fija, igual que chase pero apuntando a corner
+    std::vector<Move> moves;
+    const auto myPos = character->getPos();
+ 
+    if(character->getDirection() == PASS){
+        moves = game.getMaze().getPossibleMoves(myPos);
+    } else {
+        moves = game.getMaze().getGhostLegalMoves(myPos, character->getDirection());
+    }
+ 
+    float minDist = euclid2(game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos, moves[0])), corner);
+    int minI = 0;
+    for(unsigned int i = 1; i < moves.size(); i++){
+        auto dist = euclid2(game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos, moves[i])), corner);
+        if(dist < minDist){ minDist = dist; minI = i; }
+    }
+    return moves[minI];
+}
+ScatterState::~ScatterState(){
+}
+
+// FrightenedState. Huir de Pacman eligiendo la casilla vecina mas lejos de pacman
+FrightenedState::FrightenedState(std::shared_ptr<Character> _character)
+    : FSMState(_character){}
+	void FrightenedState::onEnter(const GameState&){
+}
+Move FrightenedState::onUpdate(const GameState& game){
+    std::vector<Move> moves;
+    const auto pacmanCoord = game.getMaze().getNodePos(game.getPacmanPos());
+    const auto myPos = character->getPos();
+ 
+    if(character->getDirection() == PASS){
+        moves = game.getMaze().getPossibleMoves(myPos);
+    } else {
+        moves = game.getMaze().getGhostLegalMoves(myPos, character->getDirection());
+    }
+ 
+    float maxDist = -1.0f;
+    int maxI = 0;
+    for(unsigned int i = 0; i < moves.size(); i++){
+        auto dist = euclid2(game.getMaze().getNodePos( game.getMaze().getNeighbour(myPos, moves[i])), pacmanCoord);
+        if(dist > maxDist){ maxDist = dist; maxI = i; }
+    }
+    return moves[maxI];
+}
+FrightenedState::~FrightenedState(){}
+ 
+NonFrightenedState:: NonFrightenedState(std::shared_ptr<Character> _character)
+	: FSMState(_character) {
+	chaseState   = std::make_shared<ChaseState>(_character);
+    scatterState = std::make_shared<ScatterState>(_character);
+ 
+    
+    chaseTimer   = std::make_shared<TimerTransition>(scatterState, 7.0);
+   
+    scatterTimer = std::make_shared<TimerTransition>(chaseState, 5.0);
+ 
+    chaseState->addTransition(chaseTimer);
+    scatterState->addTransition(scatterTimer);
+ 
+    activeChild = chaseState;
+}
+
+void NonFrightenedState::onEnter(const GameState& gs){
+
+    activeChild = chaseState;
+    chaseTimer->Reset();
+    activeChild->onEnter(gs);
+}
+Move NonFrightenedState::onUpdate(const GameState& gs){
+    // Verificamos si el hijo activo quiere cambiar de estado
+    auto t = activeChild->getActiveTransition(gs);
+    if(t != nullptr){
+        activeChild->onExit(gs);
+        t->onTransition(gs);
+        activeChild = t->getNextState();
+        activeChild->onEnter(gs);
+ 
+        // Reiniciamos el timer del nuevo hijo
+        if(activeChild == chaseState)   chaseTimer->Reset();
+        if(activeChild == scatterState) scatterTimer->Reset();
+    }
+    return activeChild->onUpdate(gs);
+}
+NonFrightenedState::~NonFrightenedState(){}
 
 /////////////////////////////////////BlinkyStateMachine/////////////////////////////
 BlinkyStateMachine::BlinkyStateMachine(std::shared_ptr<Character> _character):FiniteStateMachine(_character){
-	initialState = std::make_shared<ChaseState>(character);
-	activeState=initialState;
-	states.push_back(initialState);
-	activeState->addTransition(std::make_shared<PillTransition>(activeState));
+	auto nonFrightened = std::make_shared<NonFrightenedState>(_character);
+    auto frightened    = std::make_shared<FrightenedState>(_character);
+ 
+    
+    nonFrightened->addTransition(std::make_shared<FrightenedTransition>(frightened));
+ 
+    
+    frightened->addTransition(std::make_shared<RecoveryTransition>(nonFrightened));
+ 
+    states.push_back(nonFrightened);
+    states.push_back(frightened);
+ 
+    initialState = nonFrightened;
+    activeState  = initialState;
 }
 
 
