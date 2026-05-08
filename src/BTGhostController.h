@@ -27,6 +27,8 @@ public:
     std::shared_ptr<Character> in_character;
 };
 
+
+
 class BTGhostController: public Controller {
 private:
     std::shared_ptr<Composite> root;
@@ -35,6 +37,7 @@ public:
 	virtual ~BTGhostController();
 	virtual Move getMove(const GameState& gs) override;
 };
+
 
 class Chase : public Behavior{
 public:
@@ -73,6 +76,47 @@ private:
 public:
     virtual Status update() override;
     TimeOut ();
+};
+
+class BTPacmanController: public Controller {
+    private:
+        std::shared_ptr<Composite> root;
+    public:
+        BTPacmanController(std::shared_ptr<Character> character);
+        virtual ~BTPacmanController();
+        virtual Move getMove(const GameState& gs) override;
+};
+
+// Behaviors for Mrs. Pacman
+
+// Detecta si hay un fantasma comestible cerca
+class GhostNearby : public Behavior{
+public:
+    virtual Status update() override;
+};
+
+// SI hay powerpill cerca y hay fantasmas, vale la pena ir por ella
+class PowerPillNearby : public Behavior{
+public:
+    virtual Status update() override;
+};
+
+// Huir del fantasma 
+class PacmanFlee : public Behavior{
+public:
+    virtual Status update() override;
+};
+
+// ir hacia la power pill más cercana
+class GoToPowerPill : public Behavior{
+public:
+    virtual Status update() override;
+};
+
+// Comer powerPill
+class EatPills : public Behavior{
+public:
+    virtual Status update() override;
 };
 
 #endif /* BTGHOSTCONTROLLER_H_ */

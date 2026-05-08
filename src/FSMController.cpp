@@ -77,8 +77,8 @@ TimerTransition::TimerTransition(std::shared_ptr<FSMState> next, double seconds)
 		_running = true;
 	}
 bool TimerTransition::isValid(const GameState&){
-    if(!_running) return false;
-    auto now  = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::steady_clock::now(); 
+    
     std::chrono::duration<double> diff = now - time_point_start;
     return diff.count() >= _seconds;
 }

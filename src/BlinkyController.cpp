@@ -1,6 +1,6 @@
 #include "BlinkyController.h" 
 #include "Ghost.h"
-
+#include <cmath>
 
 BlinkyController::BlinkyController(std::shared_ptr<Character> character):
 	Controller(character)
