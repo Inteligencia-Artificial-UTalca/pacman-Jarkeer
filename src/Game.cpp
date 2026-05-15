@@ -14,13 +14,14 @@
 #include "SimplePacmanController.h"
 #include "BTGhostController.h"
 #include "FSMController.h"
-#include "DTGhostController.h"
 #include "Ghost.h"
 #include "BlinkyController.h"
 #include "InkyController.h"
 #include "PinkyController.h"
 #include "SueController.h"
 #include "PacmanController.h"
+#include "UtilityPacmanController.h"
+#include "UtilityGhostController.h"
 
 extern bool quick;
 extern bool nogui;
@@ -33,7 +34,7 @@ gv(std::make_unique<GameView>(std::vector<std::string>{"images/maze-a.png","imag
 	auto pacman=std::make_shared<MsPacMan>(gameState.getMaze().getPacmanStart());
 	gameState.addPacMan(pacman);
 	//pacmanControl=std::make_shared<KeyboardController>(pacman);
-	pacmanControl=std::make_shared<BTPacmanController>(pacman);
+	pacmanControl=std::make_shared<UtilityPacmanController>(pacman);
 	// pacmanControl=std::make_shared<PacmanController>(pacman);
 
 	std::vector<std::shared_ptr<Ghost>> ghosts;
@@ -44,9 +45,9 @@ gv(std::make_unique<GameView>(std::vector<std::string>{"images/maze-a.png","imag
 	gameState.addGhosts(ghosts);
 	ghostsControl.push_back(std::make_shared<FSMController>(ghosts[0]));
 	ghostsControl.push_back(std::make_shared<BTGhostController>(ghosts[1]));
-	ghostsControl.push_back(std::make_shared<DTGhostController>(ghosts[2]));
-	ghostsControl.push_back(std::make_shared<DTGhostController>(ghosts[3]));
-	//  ghostsControl.push_back(std::make_shared<FSMController>(ghosts[0]));
+	ghostsControl.push_back(std::make_shared<SimpleController>(ghosts[2]));
+	ghostsControl.push_back(std::make_shared<UtilityGhostController>(ghosts[3]));
+	//  ghostsControl.push_back(std::make_shared<BlinkyController>(ghosts[0]));
 	//  ghostsControl.push_back(std::make_shared<InkyController>(ghosts[1]));
 	//  ghostsControl.push_back(std::make_shared<PinkyController>(ghosts[2]));
 	//  ghostsControl.push_back(std::make_shared<SueController>(ghosts[3]));
